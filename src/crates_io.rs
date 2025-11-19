@@ -10,6 +10,18 @@ use serde::Deserialize;
 const CRATES_IO_API_BASE: &str = "https://crates.io/api/v1";
 
 #[derive(Debug, Deserialize)]
+pub struct CrateResponse {
+    #[serde(rename = "crate")]
+    pub crate_info: CrateInfo,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CrateInfo {
+    pub downloads: u64,
+    pub recent_downloads: u64,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct DownloadsResponse {
     pub version_downloads: Vec<VersionDownload>,
     pub meta: DownloadsMeta,
@@ -31,6 +43,40 @@ pub struct DownloadsMeta {
 pub struct ExtraDownload {
     pub date: String, // YYYY-MM-DD format
     pub downloads: u64,
+}
+
+/// Fetch crate metadata including cumulative download totals.
+pub async fn fetch_crate_metadata(crate_name: &str) -> Result<CrateInfo> {
+    let url = format!("{}/crates/{}", CRATES_IO_API_BASE, crate_name);
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .header(
+            "User-Agent",
+            "nextest-download-stats-collector (contact: opensource@nexte.st)",
+        )
+        .send()
+        .await
+        .with_context(|| format!("failed to fetch metadata for crate '{}'", crate_name))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        anyhow::bail!(
+            "crates.io API request failed with status {} for crate '{}': {}",
+            status,
+            crate_name,
+            body
+        );
+    }
+
+    let crate_response = response
+        .json::<CrateResponse>()
+        .await
+        .context("failed to parse crates.io API response")?;
+
+    Ok(crate_response.crate_info)
 }
 
 /// Fetch download statistics for a crate from crates.io.

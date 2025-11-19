@@ -67,6 +67,15 @@ pub fn init_db(path: &Utf8Path) -> Result<Connection> {
             PRIMARY KEY (date, crate_name, version)
         ) WITHOUT ROWID;
 
+        -- crates.io cumulative metadata snapshots
+        CREATE TABLE IF NOT EXISTS crates_metadata (
+            date TEXT NOT NULL,              -- ISO8601 date (YYYY-MM-DD)
+            crate_name TEXT NOT NULL,
+            total_downloads INTEGER NOT NULL,
+            recent_downloads INTEGER NOT NULL,
+            PRIMARY KEY (date, crate_name)
+        ) WITHOUT ROWID;
+
         -- Computed weekly aggregates for graphing
         CREATE TABLE IF NOT EXISTS weekly_stats (
             week_start TEXT NOT NULL,        -- Monday of week (YYYY-MM-DD)
@@ -124,6 +133,28 @@ pub fn insert_crates_download(
         params![date.to_string(), crate_name, version_str, downloads as i64],
     )
     .context("failed to insert crates.io download")?;
+    Ok(())
+}
+
+/// Insert a crates.io metadata snapshot.
+pub fn insert_crates_metadata(
+    conn: &Connection,
+    date: NaiveDate,
+    crate_name: &str,
+    total_downloads: u64,
+    recent_downloads: u64,
+) -> Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO crates_metadata (date, crate_name, total_downloads, recent_downloads)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![
+            date.to_string(),
+            crate_name,
+            total_downloads as i64,
+            recent_downloads as i64
+        ],
+    )
+    .context("failed to insert crates.io metadata")?;
     Ok(())
 }
 

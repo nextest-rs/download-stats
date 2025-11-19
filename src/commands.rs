@@ -96,6 +96,27 @@ async fn collect_github_stats(
 }
 
 async fn collect_crates_stats(conn: &rusqlite::Connection, crate_name: &str) -> Result<()> {
+    // Fetch cumulative metadata
+    let metadata = crates_io::fetch_crate_metadata(crate_name)
+        .await
+        .with_context(|| format!("failed to fetch metadata for '{}'", crate_name))?;
+
+    let today = Utc::now().date_naive();
+    db::insert_crates_metadata(
+        conn,
+        today,
+        crate_name,
+        metadata.downloads,
+        metadata.recent_downloads,
+    )?;
+
+    println!(
+        "    Total: {} downloads ({} recent)",
+        format_number(metadata.downloads),
+        format_number(metadata.recent_downloads)
+    );
+
+    // Fetch time-series data
     let downloads = crates_io::fetch_downloads(crate_name)
         .await
         .with_context(|| format!("failed to fetch downloads for '{}'", crate_name))?;
@@ -117,6 +138,18 @@ async fn collect_crates_stats(conn: &rusqlite::Connection, crate_name: &str) -> 
         records_inserted += 1;
     }
 
-    println!("    Inserted {} records", records_inserted);
+    println!("    Inserted {} daily records", records_inserted);
     Ok(())
+}
+
+fn format_number(n: u64) -> String {
+    let s = n.to_string();
+    let mut result = String::new();
+    for (i, c) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            result.push(',');
+        }
+        result.push(c);
+    }
+    result.chars().rev().collect()
 }

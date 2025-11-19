@@ -38,6 +38,7 @@ pub fn generate_all_charts(conn: &Connection, output_dir: &Utf8Path) -> Result<(
     generate_cumulative_github(conn, &output_dir.join("github-cumulative.png"))?;
     generate_github_by_version(conn, &output_dir.join("github-by-version.png"))?;
     generate_source_comparison(conn, &output_dir.join("source-comparison.png"))?;
+    generate_downloads_badge(conn, &output_dir.join("downloads-badge.svg"))?;
 
     println!("  ✓ Charts saved to {}", output_dir);
     Ok(())
@@ -487,6 +488,73 @@ fn generate_source_comparison(conn: &Connection, output_path: &Utf8Path) -> Resu
 
     root.present()?;
     println!("  • source-comparison.png");
+    Ok(())
+}
+
+/// Generate a downloads badge SVG showing total downloads across all sources.
+fn generate_downloads_badge(conn: &Connection, output_path: &Utf8Path) -> Result<()> {
+    // Get total GitHub downloads (latest snapshot)
+    let github_total: i64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(download_count), 0)
+             FROM github_snapshots
+             WHERE date = (SELECT MAX(date) FROM github_snapshots)",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    // Get total crates.io downloads (latest metadata snapshot)
+    let crates_total: i64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(total_downloads), 0)
+             FROM crates_metadata
+             WHERE date = (SELECT MAX(date) FROM crates_metadata)",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    let total = (github_total + crates_total) as u64;
+    let total_str = format_number(total);
+
+    // Create shields.io-style badge SVG
+    let label = "downloads";
+    let label_width = 75;
+    let value_width = total_str.len() * 7 + 20; // Approximate width
+    let total_width = label_width + value_width;
+    let label_x = label_width / 2;
+    let value_x = label_width + value_width / 2;
+
+    let svg = format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{total_width}\" height=\"20\">
+  <linearGradient id=\"b\" x2=\"0\" y2=\"100%\">
+    <stop offset=\"0\" stop-color=\"#bbb\" stop-opacity=\".1\"/>
+    <stop offset=\"1\" stop-opacity=\".1\"/>
+  </linearGradient>
+  <mask id=\"a\">
+    <rect width=\"{total_width}\" height=\"20\" rx=\"3\" fill=\"#fff\"/>
+  </mask>
+  <g mask=\"url(#a)\">
+    <path fill=\"#555\" d=\"M0 0h{label_width}v20H0z\"/>
+    <path fill=\"#007ec6\" d=\"M{label_width} 0h{value_width}v20H{label_width}z\"/>
+    <path fill=\"url(#b)\" d=\"M0 0h{total_width}v20H0z\"/>
+  </g>
+  <g fill=\"#fff\" text-anchor=\"middle\" font-family=\"Verdana,Geneva,DejaVu Sans,sans-serif\" font-size=\"11\">
+    <text x=\"{label_x_shadow}\" y=\"15\" fill=\"#010101\" fill-opacity=\".3\">{label}</text>
+    <text x=\"{label_x}\" y=\"14\">{label}</text>
+    <text x=\"{value_x_shadow}\" y=\"15\" fill=\"#010101\" fill-opacity=\".3\">{total_str}</text>
+    <text x=\"{value_x}\" y=\"14\">{total_str}</text>
+  </g>
+</svg>",
+        label_x_shadow = label_x + 1,
+        value_x_shadow = value_x + 1,
+    );
+
+    std::fs::write(output_path.as_std_path(), svg)
+        .with_context(|| format!("failed to write badge to {}", output_path))?;
+
+    println!("  • downloads-badge.svg ({} total)", total_str);
     Ok(())
 }
 
