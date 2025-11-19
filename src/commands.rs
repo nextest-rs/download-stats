@@ -3,11 +3,10 @@
 
 //! Command implementations.
 
+use crate::{aggregate, charts, config, crates_io, db, github};
 use anyhow::{Context, Result};
 use camino::Utf8Path;
 use chrono::Utc;
-
-use crate::{aggregate, charts, config, crates_io, db, github};
 
 /// Run the collect command.
 pub async fn run_collect(

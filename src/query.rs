@@ -6,8 +6,7 @@
 use anyhow::{Context, Result};
 use camino::Utf8Path;
 use rusqlite::Connection;
-use std::fs::File;
-use std::io::Write;
+use std::{fs::File, io::Write};
 
 pub enum QueryKind {
     Weekly { limit: usize, source: String },

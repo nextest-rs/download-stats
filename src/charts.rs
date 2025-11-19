@@ -6,8 +6,7 @@
 use anyhow::{Context, Result};
 use camino::Utf8Path;
 use chrono::NaiveDate;
-use plotters::coord::types::RangedCoordi64;
-use plotters::prelude::*;
+use plotters::{coord::types::RangedCoordi64, prelude::*};
 use rusqlite::Connection;
 
 const CHART_WIDTH: u32 = 1600;
@@ -35,7 +34,7 @@ pub fn generate_all_charts(conn: &Connection, output_dir: &Utf8Path) -> Result<(
     println!("\nGenerating charts...");
 
     generate_weekly_trends(conn, &output_dir.join("weekly-trends.png"))?;
-    generate_cumulative_github(conn, &output_dir.join("github-cumulative.png"))?;
+    generate_cumulative_github(conn, &output_dir.join("cumulative-total.png"))?;
     generate_github_by_version(conn, &output_dir.join("github-by-version.png"))?;
     generate_source_comparison(conn, &output_dir.join("source-comparison.png"))?;
     generate_downloads_badge(conn, &output_dir.join("downloads-badge.svg"))?;
@@ -135,15 +134,20 @@ fn generate_weekly_trends(conn: &Connection, output_path: &Utf8Path) -> Result<(
 
 /// Generate cumulative GitHub downloads chart.
 fn generate_cumulative_github(conn: &Connection, output_path: &Utf8Path) -> Result<()> {
-    // Get GitHub snapshots over time
-    let mut stmt = conn.prepare(
+    use std::collections::{HashMap, HashSet};
+
+    // Get all unique dates from both sources
+    let mut dates_set: HashSet<NaiveDate> = HashSet::new();
+
+    // Collect GitHub data by date
+    let mut github_stmt = conn.prepare(
         "SELECT date, SUM(download_count) as total
          FROM github_snapshots
          GROUP BY date
          ORDER BY date ASC",
     )?;
 
-    let data: Vec<(NaiveDate, i64)> = stmt
+    let github_data: HashMap<NaiveDate, i64> = github_stmt
         .query_map([], |row| {
             let date_str: String = row.get(0)?;
             let downloads: i64 = row.get(1)?;
@@ -151,47 +155,115 @@ fn generate_cumulative_github(conn: &Connection, output_path: &Utf8Path) -> Resu
                 .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
             Ok((date, downloads))
         })?
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<HashMap<_, _>, _>>()?;
 
-    if data.is_empty() {
+    dates_set.extend(github_data.keys());
+
+    // Collect crates.io data by date
+    let mut crates_stmt = conn.prepare(
+        "SELECT date, SUM(total_downloads) as total
+         FROM crates_metadata
+         GROUP BY date
+         ORDER BY date ASC",
+    )?;
+
+    let crates_data: HashMap<NaiveDate, i64> = crates_stmt
+        .query_map([], |row| {
+            let date_str: String = row.get(0)?;
+            let downloads: i64 = row.get(1)?;
+            let date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            Ok((date, downloads))
+        })?
+        .collect::<Result<HashMap<_, _>, _>>()?;
+
+    dates_set.extend(crates_data.keys());
+
+    if dates_set.is_empty() {
         return Ok(());
     }
 
+    // Sort dates
+    let mut dates: Vec<NaiveDate> = dates_set.into_iter().collect();
+    dates.sort();
+
+    // Calculate max for Y-axis
+    let max_total = dates
+        .iter()
+        .map(|d| {
+            let github = github_data.get(d).copied().unwrap_or(0);
+            let crates = crates_data.get(d).copied().unwrap_or(0);
+            github + crates
+        })
+        .max()
+        .unwrap();
+
     let root = create_drawing_area(output_path)?;
 
-    let min_date = data.first().unwrap().0;
-    let max_date = data.last().unwrap().0;
-    let max_downloads = data.iter().map(|(_, d)| *d).max().unwrap();
+    let min_date = *dates.first().unwrap();
+    let max_date = *dates.last().unwrap();
 
     let mut chart = ChartBuilder::on(&root)
         .caption(
-            "Cumulative Downloads - GitHub Releases",
+            "Cumulative Downloads - All Sources",
             (FONT_FAMILY, TITLE_SIZE).into_font().color(&TEXT_PRIMARY),
         )
         .margin(60)
         .x_label_area_size(70)
         .y_label_area_size(100)
-        .build_cartesian_2d(min_date..max_date, 0i64..max_downloads)?;
+        .build_cartesian_2d(min_date..max_date, 0i64..max_total)?;
 
     configure_date_mesh(&mut chart)?;
 
-    chart.draw_series(AreaSeries::new(
-        data.iter().map(|(d, v)| (*d, *v)),
-        0,
-        ACCENT_GREEN.mix(0.15),
-    ))?;
+    // Draw stacked areas: GitHub (bottom) + crates.io (top)
+    // GitHub area (bottom layer)
+    let github_series: Vec<(NaiveDate, i64)> = dates
+        .iter()
+        .map(|d| (*d, github_data.get(d).copied().unwrap_or(0)))
+        .collect();
 
-    chart.draw_series(LineSeries::new(
-        data.iter().map(|(d, v)| (*d, *v)),
-        ShapeStyle {
-            color: ACCENT_GREEN.to_rgba(),
-            filled: true,
-            stroke_width: 2,
-        },
-    ))?;
+    chart
+        .draw_series(AreaSeries::new(
+            github_series.iter().copied(),
+            0,
+            ACCENT_BLUE.mix(0.3),
+        ))?
+        .label("GitHub Releases")
+        .legend(|(x, y)| {
+            plotters::element::Rectangle::new([(x, y - 5), (x + 20, y + 5)], ACCENT_BLUE.mix(0.3))
+        });
+
+    // crates.io area (stacked on top)
+    let stacked_series: Vec<(NaiveDate, i64)> = dates
+        .iter()
+        .map(|d| {
+            let github = github_data.get(d).copied().unwrap_or(0);
+            let crates = crates_data.get(d).copied().unwrap_or(0);
+            (*d, github + crates)
+        })
+        .collect();
+
+    chart
+        .draw_series(AreaSeries::new(
+            stacked_series.iter().copied(),
+            0,
+            ACCENT_GREEN.mix(0.3),
+        ))?
+        .label("crates.io")
+        .legend(|(x, y)| {
+            plotters::element::Rectangle::new([(x, y - 5), (x + 20, y + 5)], ACCENT_GREEN.mix(0.3))
+        });
+
+    // Configure and draw legend
+    chart
+        .configure_series_labels()
+        .background_style(BACKGROUND.mix(0.9))
+        .border_style(TEXT_SECONDARY)
+        .label_font((FONT_FAMILY, LABEL_SIZE))
+        .draw()?;
 
     root.present()?;
-    println!("  • github-cumulative.png");
+    println!("  • cumulative-total.png");
     Ok(())
 }
 

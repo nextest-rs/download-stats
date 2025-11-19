@@ -3,11 +3,10 @@
 
 //! CLI argument parsing and command dispatch.
 
+use crate::{commands, config, db, query};
 use anyhow::{Context, Result};
 use camino::Utf8PathBuf;
 use clap::Parser;
-
-use crate::{commands, config, db, query};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
