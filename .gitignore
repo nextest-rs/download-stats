@@ -1,0 +1,7 @@
+# Rust build artifacts
+/target
+
+# Testing database (including WAL files)
+test-stats.db
+test-stats.db-wal
+test-stats.db-shm

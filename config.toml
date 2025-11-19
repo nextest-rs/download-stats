@@ -1,0 +1,12 @@
+# Download statistics collection configuration
+
+# GitHub repositories to track
+[[source]]
+kind = "github"
+owner = "nextest-rs"
+repo = "nextest"
+
+# crates.io crates to track
+[[source]]
+kind = "crates"
+name = "cargo-nextest"
