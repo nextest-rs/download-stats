@@ -5,3 +5,4 @@
 test-stats.db
 test-stats.db-wal
 test-stats.db-shm
+test-charts/

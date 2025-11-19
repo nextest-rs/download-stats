@@ -77,10 +77,8 @@ pub fn init_db(path: &Utf8Path) -> Result<Connection> {
         ) WITHOUT ROWID;
 
         -- Indexes for efficient queries
-        CREATE INDEX IF NOT EXISTS idx_github_date ON github_snapshots(date);
-        CREATE INDEX IF NOT EXISTS idx_crates_date ON crates_downloads(date);
+        -- Note: PRIMARY KEY (date, ...) already provides an index on date, so no need for separate index
         CREATE INDEX IF NOT EXISTS idx_crates_crate ON crates_downloads(crate_name, date);
-        CREATE INDEX IF NOT EXISTS idx_weekly_date ON weekly_stats(week_start);
         CREATE INDEX IF NOT EXISTS idx_weekly_source ON weekly_stats(source, week_start);
         "#,
     )

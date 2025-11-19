@@ -3,10 +3,12 @@
 
 //! Download statistics collector for nextest releases and crates.
 
-use anyhow::Result;
-use download_stats_collector::dispatch;
-
-#[tokio::main]
-async fn main() -> Result<()> {
-    dispatch::dispatch().await
-}
+pub mod aggregate;
+pub mod charts;
+pub mod commands;
+pub mod config;
+pub mod crates_io;
+pub mod db;
+pub mod dispatch;
+pub mod github;
+pub mod query;

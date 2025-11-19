@@ -17,13 +17,8 @@ pub struct Config {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum CollectionSource {
-    Github {
-        owner: String,
-        repo: String,
-    },
-    Crates {
-        name: String,
-    },
+    Github { owner: String, repo: String },
+    Crates { name: String },
 }
 
 impl Config {
@@ -32,8 +27,7 @@ impl Config {
         let content = fs::read_to_string(path.as_std_path())
             .with_context(|| format!("failed to read config file at {}", path))?;
 
-        toml::from_str(&content)
-            .with_context(|| format!("failed to parse config file at {}", path))
+        toml::from_str(&content).with_context(|| format!("failed to parse config file at {}", path))
     }
 
     /// Get all GitHub sources.

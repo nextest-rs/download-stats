@@ -20,44 +20,62 @@ pub struct Asset {
     pub download_count: u64,
 }
 
-/// Fetch releases from GitHub for a given repository.
+/// Fetch ALL releases from GitHub for a given repository using pagination.
 ///
-/// Note: The GitHub API only returns the most recent 30 releases by default.
-/// We fetch 100 to get better coverage, though this is still limited.
+/// This ensures we capture download stats for all releases, not just recent ones.
+/// Old releases can continue getting downloads and we need to track that.
 pub async fn fetch_releases(owner: &str, repo: &str) -> Result<Vec<Release>> {
-    let url = format!(
-        "{}/repos/{}/{}/releases?per_page=100",
-        GITHUB_API_BASE, owner, repo
-    );
-
     let client = reqwest::Client::new();
-    let response = client
-        .get(&url)
-        .header("User-Agent", "nextest-download-stats-collector")
-        .header("Accept", "application/vnd.github.v3+json")
-        // Use token if available in environment
-        .header(
-            "Authorization",
-            std::env::var("GITHUB_TOKEN")
-                .map(|token| format!("Bearer {}", token))
-                .unwrap_or_default(),
-        )
-        .send()
-        .await
-        .context("failed to fetch releases from GitHub")?;
+    let mut all_releases = Vec::new();
+    let mut page = 1;
+    let per_page = 100;
 
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        anyhow::bail!("GitHub API request failed with status {}: {}", status, body);
+    let auth_header = std::env::var("GITHUB_TOKEN")
+        .map(|token| format!("Bearer {}", token))
+        .unwrap_or_default();
+
+    loop {
+        let url = format!(
+            "{}/repos/{}/{}/releases?per_page={}&page={}",
+            GITHUB_API_BASE, owner, repo, per_page, page
+        );
+
+        let response = client
+            .get(&url)
+            .header("User-Agent", "nextest-download-stats-collector")
+            .header("Accept", "application/vnd.github.v3+json")
+            .header("Authorization", &auth_header)
+            .send()
+            .await
+            .with_context(|| format!("failed to fetch releases page {} from GitHub", page))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!(
+                "GitHub API request failed with status {} on page {}: {}",
+                status,
+                page,
+                body
+            );
+        }
+
+        let releases: Vec<Release> = response
+            .json()
+            .await
+            .with_context(|| format!("failed to parse GitHub API response for page {}", page))?;
+
+        let is_last_page = releases.len() < per_page;
+        all_releases.extend(releases);
+
+        if is_last_page {
+            break;
+        }
+
+        page += 1;
     }
 
-    let releases = response
-        .json::<Vec<Release>>()
-        .await
-        .context("failed to parse GitHub API response")?;
-
-    Ok(releases)
+    Ok(all_releases)
 }
 
 #[cfg(test)]

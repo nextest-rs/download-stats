@@ -9,21 +9,30 @@ use rusqlite::Connection;
 use std::fs::File;
 use std::io::Write;
 
-use crate::{ExportType, QueryType};
+pub enum QueryKind {
+    Weekly { limit: usize, source: String },
+    Total { source: String },
+    Latest,
+}
 
-pub fn run_query(conn: &Connection, query_type: QueryType) -> Result<()> {
-    match query_type {
-        QueryType::Weekly { limit, source } => query_weekly(conn, limit, &source)?,
-        QueryType::Total { source } => query_total(conn, &source)?,
-        QueryType::Latest => query_latest(conn)?,
+pub enum ExportKind {
+    Csv { output: String, table: String },
+    Json { output: String, table: String },
+}
+
+pub fn run_query(conn: &Connection, query: QueryKind) -> Result<()> {
+    match query {
+        QueryKind::Weekly { limit, source } => query_weekly(conn, limit, &source)?,
+        QueryKind::Total { source } => query_total(conn, &source)?,
+        QueryKind::Latest => query_latest(conn)?,
     }
     Ok(())
 }
 
-pub fn run_export(conn: &Connection, export_type: ExportType) -> Result<()> {
-    match export_type {
-        ExportType::Csv { output, table } => export_csv(conn, &output, &table)?,
-        ExportType::Json { output, table } => export_json(conn, &output, &table)?,
+pub fn run_export(conn: &Connection, export: ExportKind) -> Result<()> {
+    match export {
+        ExportKind::Csv { output, table } => export_csv(conn, output.as_ref(), &table)?,
+        ExportKind::Json { output, table } => export_json(conn, output.as_ref(), &table)?,
     }
     Ok(())
 }
@@ -122,7 +131,10 @@ fn query_latest(conn: &Connection) -> Result<()> {
         |row| row.get(0),
     )?;
 
-    println!("  GitHub (cumulative): {}", format_number(github_total as u64));
+    println!(
+        "  GitHub (cumulative): {}",
+        format_number(github_total as u64)
+    );
 
     // Data coverage
     let (first_week, last_week): (String, String) = conn.query_row(
@@ -141,7 +153,10 @@ fn export_csv(conn: &Connection, output: &Utf8Path, table: &str) -> Result<()> {
         "weekly" => "SELECT * FROM weekly_stats ORDER BY week_start, source, identifier",
         "daily" => "SELECT * FROM crates_downloads ORDER BY date, crate_name, version",
         "github" => "SELECT * FROM github_snapshots ORDER BY date, release_tag, asset_name",
-        _ => anyhow::bail!("Unknown table type: {}. Use 'weekly', 'daily', or 'github'", table),
+        _ => anyhow::bail!(
+            "Unknown table type: {}. Use 'weekly', 'daily', or 'github'",
+            table
+        ),
     };
 
     let mut stmt = conn.prepare(query)?;
@@ -162,7 +177,9 @@ fn export_csv(conn: &Connection, output: &Utf8Path, table: &str) -> Result<()> {
                 rusqlite::types::ValueRef::Null => String::new(),
                 rusqlite::types::ValueRef::Integer(i) => i.to_string(),
                 rusqlite::types::ValueRef::Real(f) => f.to_string(),
-                rusqlite::types::ValueRef::Text(s) => std::str::from_utf8(s).unwrap_or("").to_string(),
+                rusqlite::types::ValueRef::Text(s) => {
+                    std::str::from_utf8(s).unwrap_or("").to_string()
+                }
                 rusqlite::types::ValueRef::Blob(b) => format!("{:?}", b),
             };
             values.push(value);
@@ -184,7 +201,10 @@ fn export_json(conn: &Connection, output: &Utf8Path, table: &str) -> Result<()> 
         "weekly" => "SELECT * FROM weekly_stats ORDER BY week_start, source, identifier",
         "daily" => "SELECT * FROM crates_downloads ORDER BY date, crate_name, version",
         "github" => "SELECT * FROM github_snapshots ORDER BY date, release_tag, asset_name",
-        _ => anyhow::bail!("Unknown table type: {}. Use 'weekly', 'daily', or 'github'", table),
+        _ => anyhow::bail!(
+            "Unknown table type: {}. Use 'weekly', 'daily', or 'github'",
+            table
+        ),
     };
 
     let mut stmt = conn.prepare(query)?;
@@ -196,17 +216,13 @@ fn export_json(conn: &Connection, output: &Utf8Path, table: &str) -> Result<()> 
             let value = match row.get_ref(i)? {
                 rusqlite::types::ValueRef::Null => serde_json::Value::Null,
                 rusqlite::types::ValueRef::Integer(n) => serde_json::Value::Number(n.into()),
-                rusqlite::types::ValueRef::Real(f) => {
-                    serde_json::Number::from_f64(f)
-                        .map(serde_json::Value::Number)
-                        .unwrap_or(serde_json::Value::Null)
-                }
+                rusqlite::types::ValueRef::Real(f) => serde_json::Number::from_f64(f)
+                    .map(serde_json::Value::Number)
+                    .unwrap_or(serde_json::Value::Null),
                 rusqlite::types::ValueRef::Text(s) => {
                     serde_json::Value::String(std::str::from_utf8(s).unwrap_or("").to_string())
                 }
-                rusqlite::types::ValueRef::Blob(b) => {
-                    serde_json::Value::String(format!("{:?}", b))
-                }
+                rusqlite::types::ValueRef::Blob(b) => serde_json::Value::String(format!("{:?}", b)),
             };
             map.insert(name.clone(), value);
         }
