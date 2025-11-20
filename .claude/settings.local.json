@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo check:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo run:*)",
+      "Bash(cargo build:*)",
+      "Bash(git -C /home/rain/dev/nextest-rs/download-stats status --short fonts/)",
+      "Bash(fc-query:*)",
+      "Bash(python3:*)"
+    ]
+  }
+}

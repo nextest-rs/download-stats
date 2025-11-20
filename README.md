@@ -1,4 +1,4 @@
-# nextest Download Statistics Collector
+# nextest download statistics collector
 
 Automated collection of download statistics for nextest across multiple sources.
 
@@ -13,9 +13,9 @@ Data is stored in a SQLite database and automatically aggregated into weekly sta
 
 ## Architecture
 
-### Data Sources
+### Data sources
 
-#### GitHub Releases API
+#### GitHub releases API
 - Provides **cumulative** download counts per release asset
 - Limited to most recent 100 releases
 - Sampled daily to compute download deltas over time
@@ -29,7 +29,7 @@ Data is stored in a SQLite database and automatically aggregated into weekly sta
   - `nextest-metadata`
   - `nextest-filtering`
 
-### Database Schema
+### Database schema
 
 ```sql
 -- GitHub release asset downloads (snapshot-based)
@@ -62,7 +62,7 @@ CREATE TABLE weekly_stats (
 
 ## Usage
 
-### Running Locally
+### Running locally
 
 ```bash
 # Collect all statistics (creates/updates download-stats.db)
@@ -77,7 +77,7 @@ cargo run --release -- --skip-aggregation
 cargo run --release -- --database /path/to/stats.db
 ```
 
-### Querying the Database
+### Querying the database
 
 ```bash
 # Weekly downloads for cargo-nextest crate
@@ -100,7 +100,7 @@ sqlite3 download-stats.db \
    ORDER BY week_start DESC LIMIT 10"
 ```
 
-## Automated Collection
+## Automated collection
 
 A GitHub Actions workflow runs weekly (every Monday at 2 AM UTC) to:
 
@@ -113,7 +113,7 @@ The workflow can also be triggered manually via the Actions tab.
 
 ## Limitations
 
-### GitHub Releases
+### GitHub releases
 - API only provides cumulative counts (not time-series)
 - Limited to most recent 100 releases
 - Historical trends only available from when collection started
@@ -126,7 +126,7 @@ The workflow can also be triggered manually via the Actions tab.
 
 ## Development
 
-### Project Structure
+### Project structure
 
 ```
 src/
@@ -150,7 +150,7 @@ cargo check
 cargo run -- --database test-stats.db
 ```
 
-## Future Enhancements
+## Future enhancements
 
 Potential additions:
 

@@ -36,7 +36,6 @@ pub fn compute_crates_weekly(conn: &Connection) -> Result<()> {
         ))
     })?;
 
-    // Group by week and crate
     let mut weekly_data: HashMap<(NaiveDate, String), u64> = HashMap::new();
 
     for row in rows {
@@ -48,7 +47,6 @@ pub fn compute_crates_weekly(conn: &Connection) -> Result<()> {
         *weekly_data.entry((week_start, crate_name)).or_insert(0) += downloads as u64;
     }
 
-    // Insert weekly aggregates
     for ((week_start, crate_name), downloads) in weekly_data {
         db::insert_weekly_stat(conn, week_start, "crates", &crate_name, downloads)?;
     }
@@ -61,7 +59,6 @@ pub fn compute_crates_weekly(conn: &Connection) -> Result<()> {
 /// Since GitHub only provides cumulative counts, we compute deltas between snapshots
 /// and attribute them to the week of the later snapshot.
 pub fn compute_github_weekly(conn: &Connection) -> Result<()> {
-    // Query all GitHub snapshots ordered by date
     let mut stmt = conn.prepare(
         "SELECT date, release_tag, asset_name, download_count
          FROM github_snapshots
@@ -77,7 +74,6 @@ pub fn compute_github_weekly(conn: &Connection) -> Result<()> {
         ))
     })?;
 
-    // Track previous snapshot for each (release, asset) pair
     let mut prev_snapshots: HashMap<(String, String), (NaiveDate, i64)> = HashMap::new();
     let mut weekly_data: HashMap<NaiveDate, u64> = HashMap::new();
 
@@ -89,18 +85,15 @@ pub fn compute_github_weekly(conn: &Connection) -> Result<()> {
         let key = (release_tag, asset_name);
 
         if let Some((_prev_date, prev_count)) = prev_snapshots.get(&key) {
-            // Compute delta
             let delta = (download_count - prev_count).max(0) as u64;
             let week_start = get_week_start(date);
 
             *weekly_data.entry(week_start).or_insert(0) += delta;
         }
 
-        // Update previous snapshot
         prev_snapshots.insert(key, (date, download_count));
     }
 
-    // Insert weekly aggregates (using "releases" as the identifier)
     for (week_start, downloads) in weekly_data {
         db::insert_weekly_stat(conn, week_start, "github", "releases", downloads)?;
     }

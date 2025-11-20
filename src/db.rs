@@ -13,40 +13,22 @@ pub fn init_db(path: &Utf8Path) -> Result<Connection> {
     let conn = Connection::open(path.as_std_path())
         .with_context(|| format!("failed to open database at {}", path))?;
 
-    // Enable SQLite best practices
-    // Note: Some pragmas (like journal_mode, synchronous) persist in the database file.
-    // Others (like cache_size, foreign_keys) are per-connection and must be set each time.
+    // Configure SQLite for concurrent access and performance.
+    // Persistent pragmas (journal_mode, synchronous) are stored in the database.
+    // Per-connection pragmas must be set each time.
     conn.execute_batch(
         r#"
-        -- WAL mode for better concurrency and crash recovery (PERSISTENT)
-        -- WAL allows concurrent readers while writing and provides better crash recovery
         PRAGMA journal_mode = WAL;
-
-        -- Synchronous mode: NORMAL is safe with WAL and much faster (PERSISTENT)
-        -- FULL would be slower, OFF would be unsafe. NORMAL is the sweet spot with WAL.
         PRAGMA synchronous = NORMAL;
-
-        -- Foreign key constraints enforcement (PER-CONNECTION)
         PRAGMA foreign_keys = ON;
-
-        -- Increase cache size to 64MB (PER-CONNECTION, default is ~2MB)
-        -- Negative value means size in KB, positive means number of pages
         PRAGMA cache_size = -64000;
-
-        -- Use memory-mapped I/O for reads (PER-CONNECTION, 128MB)
-        -- Speeds up read performance significantly
         PRAGMA mmap_size = 134217728;
-
-        -- Enable automatic index creation for optimization (PER-CONNECTION)
         PRAGMA automatic_index = ON;
-
-        -- Store temp tables in memory for better performance (PER-CONNECTION)
         PRAGMA temp_store = MEMORY;
         "#,
     )
     .context("failed to set database pragmas")?;
 
-    // Create schema
     conn.execute_batch(
         r#"
         -- GitHub release asset downloads (snapshot-based)

@@ -42,7 +42,7 @@ pub async fn run_collect(
         aggregate::compute_all_weekly(&conn)?;
     }
 
-    println!("\n✓ Collection complete!");
+    println!("\nCollection complete.");
     Ok(())
 }
 
@@ -69,7 +69,7 @@ async fn collect_github_stats(
     let mut total_downloads = 0;
 
     for release in releases {
-        // Only collect cargo-nextest releases
+        // Skip non-cargo-nextest releases.
         if !release.tag_name.starts_with("cargo-nextest-") {
             continue;
         }
@@ -95,7 +95,6 @@ async fn collect_github_stats(
 }
 
 async fn collect_crates_stats(conn: &rusqlite::Connection, crate_name: &str) -> Result<()> {
-    // Fetch cumulative metadata
     let metadata = crates_io::fetch_crate_metadata(crate_name)
         .await
         .with_context(|| format!("failed to fetch metadata for '{}'", crate_name))?;
@@ -115,14 +114,12 @@ async fn collect_crates_stats(conn: &rusqlite::Connection, crate_name: &str) -> 
         format_number(metadata.recent_downloads)
     );
 
-    // Fetch time-series data
     let downloads = crates_io::fetch_downloads(crate_name)
         .await
         .with_context(|| format!("failed to fetch downloads for '{}'", crate_name))?;
 
     let mut records_inserted = 0;
 
-    // Insert version-specific downloads
     for vd in downloads.version_downloads {
         let date = crates_io::parse_date(&vd.date)?;
         let version_str = vd.version.to_string();
@@ -130,7 +127,6 @@ async fn collect_crates_stats(conn: &rusqlite::Connection, crate_name: &str) -> 
         records_inserted += 1;
     }
 
-    // Insert aggregate downloads (for versions without detailed tracking)
     for ed in downloads.meta.extra_downloads {
         let date = crates_io::parse_date(&ed.date)?;
         db::insert_crates_download(conn, date, crate_name, None, ed.downloads)?;

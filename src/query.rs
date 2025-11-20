@@ -99,17 +99,16 @@ fn query_total(conn: &Connection, source: &str) -> Result<()> {
         }
     };
 
-    println!("\n📊 Total Downloads");
-    println!("   Source: {}", description);
-    println!("   Total:  {}", format_number(total_downloads as u64));
+    println!("\nTotal downloads");
+    println!("  Source: {}", description);
+    println!("  Total:  {}", format_number(total_downloads as u64));
 
     Ok(())
 }
 
 fn query_latest(conn: &Connection) -> Result<()> {
-    println!("\n📈 Latest Statistics\n");
+    println!("\nLatest statistics\n");
 
-    // Latest week from weekly_stats
     let (latest_week, crates_downloads): (String, i64) = conn.query_row(
         "SELECT week_start, SUM(downloads) FROM weekly_stats
          WHERE source = 'crates'
@@ -122,7 +121,6 @@ fn query_latest(conn: &Connection) -> Result<()> {
     println!("Latest week: {}", latest_week);
     println!("  crates.io: {}", format_number(crates_downloads as u64));
 
-    // GitHub total (cumulative)
     let github_total: i64 = conn.query_row(
         "SELECT SUM(download_count) FROM github_snapshots
          WHERE date = (SELECT MAX(date) FROM github_snapshots)",
@@ -135,7 +133,6 @@ fn query_latest(conn: &Connection) -> Result<()> {
         format_number(github_total as u64)
     );
 
-    // Data coverage
     let (first_week, last_week): (String, String) = conn.query_row(
         "SELECT MIN(week_start), MAX(week_start) FROM weekly_stats",
         [],
@@ -165,10 +162,8 @@ fn export_csv(conn: &Connection, output: &Utf8Path, table: &str) -> Result<()> {
     let mut file = File::create(output.as_std_path())
         .with_context(|| format!("failed to create file at {}", output))?;
 
-    // Write header
     writeln!(file, "{}", column_names.join(","))?;
 
-    // Write rows
     let rows = stmt.query_map([], |row| {
         let mut values = Vec::new();
         for i in 0..column_count {
@@ -191,7 +186,7 @@ fn export_csv(conn: &Connection, output: &Utf8Path, table: &str) -> Result<()> {
         writeln!(file, "{}", values.join(","))?;
     }
 
-    println!("✓ Exported to {}", output);
+    println!("Exported to {}.", output);
     Ok(())
 }
 
@@ -239,11 +234,11 @@ fn export_json(conn: &Connection, output: &Utf8Path, table: &str) -> Result<()> 
         .with_context(|| format!("failed to create file at {}", output))?;
     file.write_all(json.as_bytes())?;
 
-    println!("✓ Exported to {}", output);
+    println!("Exported to {}.", output);
     Ok(())
 }
 
-/// Format a number with thousands separators
+/// Format a number with thousands separators.
 fn format_number(n: u64) -> String {
     let s = n.to_string();
     let mut result = String::new();

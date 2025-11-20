@@ -12,19 +12,19 @@ use rusqlite::Connection;
 const CHART_WIDTH: u32 = 1600;
 const CHART_HEIGHT: u32 = 900;
 
-// Typography - Inter font family
+// Typography: Inter font family (must be installed on the system).
 const FONT_FAMILY: &str = "Inter";
 const TITLE_SIZE: i32 = 24;
 const LABEL_SIZE: i32 = 16;
 const AXIS_SIZE: i32 = 14;
 
-// Colors - Modern, minimal palette
-const BACKGROUND: RGBColor = RGBColor(250, 250, 252); // Off-white
-const TEXT_PRIMARY: RGBColor = RGBColor(15, 23, 42); // Slate 900
-const TEXT_SECONDARY: RGBColor = RGBColor(100, 116, 139); // Slate 500
-const GRID_COLOR: RGBColor = RGBColor(226, 232, 240); // Slate 200
-const ACCENT_BLUE: RGBColor = RGBColor(59, 130, 246); // Blue 500
-const ACCENT_GREEN: RGBColor = RGBColor(34, 197, 94); // Green 500
+// Colors: modern, minimal palette.
+const BACKGROUND: RGBColor = RGBColor(250, 250, 252); // Off-white.
+const TEXT_PRIMARY: RGBColor = RGBColor(15, 23, 42); // Slate 900.
+const TEXT_SECONDARY: RGBColor = RGBColor(100, 116, 139); // Slate 500.
+const GRID_COLOR: RGBColor = RGBColor(226, 232, 240); // Slate 200.
+const ACCENT_BLUE: RGBColor = RGBColor(59, 130, 246); // Blue 500.
+const ACCENT_GREEN: RGBColor = RGBColor(34, 197, 94); // Green 500.
 
 /// Generate all charts from the database.
 pub fn generate_all_charts(conn: &Connection, output_dir: &Utf8Path) -> Result<()> {
@@ -39,7 +39,7 @@ pub fn generate_all_charts(conn: &Connection, output_dir: &Utf8Path) -> Result<(
     generate_source_comparison(conn, &output_dir.join("source-comparison.png"))?;
     generate_downloads_badge(conn, &output_dir.join("downloads-badge.svg"))?;
 
-    println!("  ✓ Charts saved to {}", output_dir);
+    println!("  Charts saved to {}.", output_dir);
     Ok(())
 }
 
@@ -77,7 +77,6 @@ where
 
 /// Generate weekly download trends chart (line chart).
 fn generate_weekly_trends(conn: &Connection, output_path: &Utf8Path) -> Result<()> {
-    // Query weekly stats
     let mut stmt = conn.prepare(
         "SELECT week_start, SUM(downloads) as total
          FROM weekly_stats
@@ -136,10 +135,8 @@ fn generate_weekly_trends(conn: &Connection, output_path: &Utf8Path) -> Result<(
 fn generate_cumulative_github(conn: &Connection, output_path: &Utf8Path) -> Result<()> {
     use std::collections::{HashMap, HashSet};
 
-    // Get all unique dates from both sources
     let mut dates_set: HashSet<NaiveDate> = HashSet::new();
 
-    // Collect GitHub data by date
     let mut github_stmt = conn.prepare(
         "SELECT date, SUM(download_count) as total
          FROM github_snapshots
@@ -159,7 +156,6 @@ fn generate_cumulative_github(conn: &Connection, output_path: &Utf8Path) -> Resu
 
     dates_set.extend(github_data.keys());
 
-    // Collect crates.io data by date
     let mut crates_stmt = conn.prepare(
         "SELECT date, SUM(total_downloads) as total
          FROM crates_metadata
@@ -183,11 +179,9 @@ fn generate_cumulative_github(conn: &Connection, output_path: &Utf8Path) -> Resu
         return Ok(());
     }
 
-    // Sort dates
     let mut dates: Vec<NaiveDate> = dates_set.into_iter().collect();
     dates.sort();
 
-    // Calculate max for Y-axis
     let max_total = dates
         .iter()
         .map(|d| {
@@ -215,8 +209,6 @@ fn generate_cumulative_github(conn: &Connection, output_path: &Utf8Path) -> Resu
 
     configure_date_mesh(&mut chart)?;
 
-    // Draw stacked areas: GitHub (bottom) + crates.io (top)
-    // GitHub area (bottom layer)
     let github_series: Vec<(NaiveDate, i64)> = dates
         .iter()
         .map(|d| (*d, github_data.get(d).copied().unwrap_or(0)))
@@ -233,7 +225,6 @@ fn generate_cumulative_github(conn: &Connection, output_path: &Utf8Path) -> Resu
             plotters::element::Rectangle::new([(x, y - 5), (x + 20, y + 5)], ACCENT_BLUE.mix(0.3))
         });
 
-    // crates.io area (stacked on top)
     let stacked_series: Vec<(NaiveDate, i64)> = dates
         .iter()
         .map(|d| {
@@ -254,7 +245,6 @@ fn generate_cumulative_github(conn: &Connection, output_path: &Utf8Path) -> Resu
             plotters::element::Rectangle::new([(x, y - 5), (x + 20, y + 5)], ACCENT_GREEN.mix(0.3))
         });
 
-    // Configure and draw legend
     chart
         .configure_series_labels()
         .background_style(BACKGROUND.mix(0.9))
@@ -278,7 +268,6 @@ struct VersionInfo {
 fn generate_github_by_version(conn: &Connection, output_path: &Utf8Path) -> Result<()> {
     use std::collections::{HashMap, HashSet};
 
-    // Get all cargo-nextest release tags with their download counts
     let mut tag_stmt = conn.prepare(
         "SELECT release_tag, SUM(download_count) as total
          FROM github_snapshots
@@ -296,7 +285,6 @@ fn generate_github_by_version(conn: &Connection, output_path: &Utf8Path) -> Resu
         return Ok(());
     }
 
-    // Parse version numbers and sort by semantic version (latest first)
     let mut versions: Vec<(VersionInfo, i64)> = all_tags
         .into_iter()
         .filter_map(|(tag, downloads)| {
@@ -306,14 +294,12 @@ fn generate_github_by_version(conn: &Connection, output_path: &Utf8Path) -> Resu
         })
         .collect();
 
-    versions.sort_by(|a, b| b.0.version.cmp(&a.0.version)); // Sort descending (latest first)
+    versions.sort_by(|a, b| b.0.version.cmp(&a.0.version));
 
-    // Filter out versions with trivial downloads, then take the 5 most recent
-    // Heuristic: must have at least 10,000 downloads or 0.5% of max
+    // Filter out versions with trivial downloads (<10k or <0.5% of max), keep top 5.
     let max_downloads = versions.iter().map(|(_, d)| *d).max().unwrap_or(0);
     let threshold = (max_downloads as f64 * 0.005).max(10_000.0) as i64;
 
-    // Keep structured data: already sorted by semver descending
     let top_versions: Vec<VersionInfo> = versions
         .into_iter()
         .filter(|(_, downloads)| *downloads >= threshold)
@@ -323,7 +309,6 @@ fn generate_github_by_version(conn: &Connection, output_path: &Utf8Path) -> Resu
 
     let top_tags: HashSet<&str> = top_versions.iter().map(|v| v.tag.as_str()).collect();
 
-    // Query all snapshots
     let mut stmt = conn.prepare(
         "SELECT date, release_tag, SUM(download_count) as total
          FROM github_snapshots
@@ -340,7 +325,6 @@ fn generate_github_by_version(conn: &Connection, output_path: &Utf8Path) -> Resu
         Ok((date, tag, downloads))
     })?;
 
-    // Organize data by date and version
     let mut data_by_date: HashMap<NaiveDate, HashMap<String, i64>> = HashMap::new();
     let mut all_dates: HashSet<NaiveDate> = HashSet::new();
 
@@ -368,7 +352,6 @@ fn generate_github_by_version(conn: &Connection, output_path: &Utf8Path) -> Resu
     let mut dates: Vec<NaiveDate> = all_dates.into_iter().collect();
     dates.sort();
 
-    // Create series data - categories are already sorted by semver descending
     let mut series_data: HashMap<String, Vec<(NaiveDate, i64)>> = HashMap::new();
     let mut categories: Vec<String> = top_versions.iter().map(|v| v.tag.clone()).collect();
     categories.push("Other".to_string());
@@ -409,17 +392,15 @@ fn generate_github_by_version(conn: &Connection, output_path: &Utf8Path) -> Resu
 
     configure_date_mesh(&mut chart)?;
 
-    // Color palette for versions
     let colors = [
-        RGBColor(99, 102, 241),  // Indigo
-        RGBColor(59, 130, 246),  // Blue
-        RGBColor(34, 197, 94),   // Green
-        RGBColor(251, 146, 60),  // Orange
-        RGBColor(236, 72, 153),  // Pink
-        RGBColor(156, 163, 175), // Gray (for "Other")
+        RGBColor(99, 102, 241),
+        RGBColor(59, 130, 246),
+        RGBColor(34, 197, 94),
+        RGBColor(251, 146, 60),
+        RGBColor(236, 72, 153),
+        RGBColor(156, 163, 175),
     ];
 
-    // Draw stacked areas
     for (idx, category) in categories.iter().enumerate() {
         if let Some(data) = series_data.get(category) {
             let color = colors[idx % colors.len()];
@@ -460,7 +441,6 @@ fn generate_github_by_version(conn: &Connection, output_path: &Utf8Path) -> Resu
 
 /// Generate source comparison chart (GitHub vs crates.io).
 fn generate_source_comparison(conn: &Connection, output_path: &Utf8Path) -> Result<()> {
-    // Get weekly stats by source
     let mut stmt = conn.prepare(
         "SELECT week_start, source, SUM(downloads) as total
          FROM weekly_stats
@@ -565,7 +545,6 @@ fn generate_source_comparison(conn: &Connection, output_path: &Utf8Path) -> Resu
 
 /// Generate a downloads badge SVG showing total downloads across all sources.
 fn generate_downloads_badge(conn: &Connection, output_path: &Utf8Path) -> Result<()> {
-    // Get total GitHub downloads (latest snapshot)
     let github_total: i64 = conn
         .query_row(
             "SELECT COALESCE(SUM(download_count), 0)
@@ -576,7 +555,6 @@ fn generate_downloads_badge(conn: &Connection, output_path: &Utf8Path) -> Result
         )
         .unwrap_or(0);
 
-    // Get total crates.io downloads (latest metadata snapshot)
     let crates_total: i64 = conn
         .query_row(
             "SELECT COALESCE(SUM(total_downloads), 0)
@@ -590,10 +568,9 @@ fn generate_downloads_badge(conn: &Connection, output_path: &Utf8Path) -> Result
     let total = (github_total + crates_total) as u64;
     let total_str = format_number(total);
 
-    // Create shields.io-style badge SVG
     let label = "downloads";
     let label_width = 75;
-    let value_width = total_str.len() * 7 + 20; // Approximate width
+    let value_width = total_str.len() * 7 + 20;
     let total_width = label_width + value_width;
     let label_x = label_width / 2;
     let value_x = label_width + value_width / 2;

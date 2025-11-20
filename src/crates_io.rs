@@ -29,9 +29,11 @@ pub struct DownloadsResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct VersionDownload {
-    pub version: u64, // Numeric version ID from crates.io
+    /// Numeric version ID from crates.io.
+    pub version: u64,
     pub downloads: u64,
-    pub date: String, // YYYY-MM-DD format
+    /// YYYY-MM-DD format.
+    pub date: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -41,7 +43,8 @@ pub struct DownloadsMeta {
 
 #[derive(Debug, Deserialize)]
 pub struct ExtraDownload {
-    pub date: String, // YYYY-MM-DD format
+    /// YYYY-MM-DD format.
+    pub date: String,
     pub downloads: u64,
 }
 
@@ -128,7 +131,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_fetch_downloads() {
-        // This test requires network access
         let downloads = fetch_downloads("cargo-nextest").await.unwrap();
         assert!(
             !downloads.version_downloads.is_empty(),
@@ -139,7 +141,6 @@ mod tests {
             "should have extra downloads"
         );
 
-        // Verify date parsing
         for vd in &downloads.version_downloads {
             parse_date(&vd.date).expect("should parse date");
         }

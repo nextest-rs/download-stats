@@ -84,11 +84,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_fetch_releases() {
-        // This test requires network access
         let releases = fetch_releases("nextest-rs", "nextest").await.unwrap();
         assert!(!releases.is_empty(), "should have at least one release");
 
-        // Check that we got assets with download counts
         let has_assets = releases.iter().any(|r| !r.assets.is_empty());
         assert!(has_assets, "at least one release should have assets");
     }
