@@ -36,7 +36,7 @@ jobs:
       - name: Install fontconfig and Inter font
         run: |
           sudo apt-get update
-          sudo apt-get install -y fontconfig
+          sudo apt-get install -y libfontconfig1-dev
           mkdir -p ~/.local/share/fonts
           cp fonts/Inter-Regular.ttf ~/.local/share/fonts/
           fc-cache -f
